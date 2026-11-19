@@ -1,0 +1,3047 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  LayoutDashboard,
+  PlusCircle,
+  History,
+  User,
+  Flame,
+  Lock,
+  Unlock,
+  KeyRound,
+  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Utensils,
+  Car,
+  Receipt,
+  ShoppingBag,
+  Gamepad2,
+  HeartPulse,
+  MoreHorizontal,
+  Briefcase,
+  Gift,
+  Store,
+  LineChart,
+  Search,
+  Filter,
+  Edit3,
+  Trash2,
+  Download,
+  LogOut,
+  Copy,
+  Check,
+  AlertTriangle,
+  Sparkles,
+  Calendar,
+  ChevronRight,
+  X,
+  Database,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Info
+} from 'lucide-react';
+
+// ============================================================================
+// KONFIGURASI SUPABASE & UTILITAS ZONA WAKTU (ASIA/JAKARTA)
+// ============================================================================
+
+// Memuat Supabase client dari CDN global (window.supabase)
+const createClient = (url, key) => {
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
+    return window.supabase.createClient(url, key);
+  }
+  throw new Error('Supabase script belum dimuat. Periksa koneksi internet Anda.');
+};
+
+const DEFAULT_SUPABASE_URL = 'https://your-project-id.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'your-anon-key';
+
+// Password Master untuk halaman rahasia /admin-lisensi
+const ADMIN_MASTER_CODE = 'ADMIN2026';
+
+// Mendapatkan tanggal hari ini dalam format YYYY-MM-DD sesuai zona waktu Asia/Jakarta
+const getJakartaDateStr = (offsetDays = 0) => {
+  const now = new Date();
+  const jakartaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  jakartaTime.setDate(jakartaTime.getDate() + offsetDays);
+  const year = jakartaTime.getFullYear();
+  const month = String(jakartaTime.getMonth() + 1).padStart(2, '0');
+  const day = String(jakartaTime.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getJakartaYearMonth = () => {
+  return getJakartaDateStr(0).slice(0, 7);
+};
+
+const getDaysDifference = (dateStr1, dateStr2) => {
+  if (!dateStr1 || !dateStr2) return null;
+  const [y1, m1, d1] = dateStr1.split('-').map(Number);
+  const [y2, m2, d2] = dateStr2.split('-').map(Number);
+  const utc1 = Date.UTC(y1, m1 - 1, d1);
+  const utc2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.floor((utc2 - utc1) / (1000 * 60 * 60 * 24));
+};
+
+const formatRupiah = (amount) => {
+  const num = Number(amount) || 0;
+  const formatted = Math.abs(num)
+    .toFixed(0)
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${num < 0 ? '-' : ''}Rp ${formatted}`;
+};
+
+const formatTanggalIndo = (dateStr) => {
+  if (!dateStr) return '-';
+  const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const bulan = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const todayStr = getJakartaDateStr(0);
+  const yesterdayStr = getJakartaDateStr(-1);
+
+  if (dateStr === todayStr) return `Hari Ini, ${d} ${bulan[m - 1]} ${y}`;
+  if (dateStr === yesterdayStr) return `Kemarin, ${d} ${bulan[m - 1]} ${y}`;
+  return `${hari[dateObj.getDay()]}, ${d} ${bulan[m - 1]} ${y}`;
+};
+
+const CATEGORIES = {
+  expense: [
+    { id: 'Makanan & Minuman', label: 'Makanan & Minuman', icon: Utensils, color: '#2563EB', bg: 'bg-blue-100 text-blue-600' },
+    { id: 'Transportasi', label: 'Transportasi', icon: Car, color: '#0284C7', bg: 'bg-sky-100 text-sky-600' },
+    { id: 'Tagihan & Utilitas', label: 'Tagihan & Utilitas', icon: Receipt, color: '#4F46E5', bg: 'bg-indigo-100 text-indigo-600' },
+    { id: 'Belanja', label: 'Belanja', icon: ShoppingBag, color: '#0D9488', bg: 'bg-teal-100 text-teal-600' },
+    { id: 'Hiburan', label: 'Hiburan', icon: Gamepad2, color: '#7C3AED', bg: 'bg-violet-100 text-violet-600' },
+    { id: 'Kesehatan', label: 'Kesehatan', icon: HeartPulse, color: '#E11D48', bg: 'bg-rose-100 text-rose-600' },
+    { id: 'Lainnya', label: 'Lainnya', icon: MoreHorizontal, color: '#64748B', bg: 'bg-slate-100 text-slate-600' },
+  ],
+  income: [
+    { id: 'Gaji', label: 'Gaji', icon: Briefcase, color: '#10B981', bg: 'bg-emerald-100 text-emerald-600' },
+    { id: 'Bonus', label: 'Bonus', icon: Gift, color: '#059669', bg: 'bg-green-100 text-green-600' },
+    { id: 'Hasil Usaha', label: 'Hasil Usaha', icon: Store, color: '#0284C7', bg: 'bg-sky-100 text-sky-600' },
+    { id: 'Investasi', label: 'Investasi', icon: LineChart, color: '#2563EB', bg: 'bg-blue-100 text-blue-600' },
+    { id: 'Lainnya', label: 'Lainnya', icon: MoreHorizontal, color: '#64748B', bg: 'bg-slate-100 text-slate-600' },
+  ]
+};
+
+const getCategoryMeta = (type, categoryName) => {
+  const list = CATEGORIES[type] || CATEGORIES.expense;
+  return list.find((c) => c.id === categoryName) || list[list.length - 1];
+};
+
+const SUPABASE_SQL_SCHEMA = `-- Jalankan SQL ini di SQL Editor Supabase Anda untuk membuat seluruh tabel & kebijakan RLS:
+
+CREATE TABLE IF NOT EXISTS public.license_codes (
+  code TEXT PRIMARY KEY,
+  is_used BOOLEAN DEFAULT FALSE,
+  used_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  used_at TIMESTAMPTZ
+);
+
+ALTER TABLE public.license_codes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Siapa saja dapat cek kode lisensi" ON public.license_codes FOR SELECT USING (true);
+CREATE POLICY "Pengguna baru dapat klaim kode" ON public.license_codes FOR UPDATE USING (true);
+CREATE POLICY "Admin dapat menambah kode" ON public.license_codes FOR INSERT WITH CHECK (true);
+
+INSERT INTO public.license_codes (code, is_used) VALUES 
+  ('VIP-2026-RUANG', false),
+  ('VIP-8492-XK', false),
+  ('VIP-9910-PRO', false)
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  security_pin TEXT NOT NULL
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  category TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  note TEXT,
+  transaction_date DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own transactions" ON public.transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own transactions" ON public.transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own transactions" ON public.transactions FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own transactions" ON public.transactions FOR DELETE USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.user_streaks (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  current_streak INTEGER DEFAULT 0,
+  longest_streak INTEGER DEFAULT 0,
+  previous_streak INTEGER DEFAULT 0,
+  last_log_date DATE,
+  last_restore_month TEXT
+);
+
+ALTER TABLE public.user_streaks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own streak" ON public.user_streaks FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own streak" ON public.user_streaks FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own streak" ON public.user_streaks FOR UPDATE USING (auth.uid() = user_id);
+`;
+
+const ExpenseDonutChart = ({ transactions, currentMonth }) => {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+
+  const chartData = useMemo(() => {
+    const monthlyExpenses = transactions.filter(
+      (t) => t.type === 'expense' && t.transaction_date?.startsWith(currentMonth)
+    );
+    const total = monthlyExpenses.reduce((sum, t) => sum + Number(t.amount), 0);
+
+    if (total === 0) return { total: 0, items: [] };
+
+    const grouped = {};
+    monthlyExpenses.forEach((t) => {
+      grouped[t.category] = (grouped[t.category] || 0) + Number(t.amount);
+    });
+
+    const items = Object.entries(grouped)
+      .map(([category, amount]) => {
+        const meta = getCategoryMeta('expense', category);
+        return {
+          category,
+          amount,
+          percentage: Math.round((amount / total) * 1000) / 10,
+          color: meta.color,
+          bg: meta.bg
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+
+    return { total, items };
+  }, [transactions, currentMonth]);
+
+  if (chartData.total === 0) {
+    return (
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-blue-50 flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 mb-3">
+          <LineChart className="w-8 h-8" />
+        </div>
+        <h3 className="font-bold text-slate-800 text-base">Belum Ada Pengeluaran Bulan Ini</h3>
+        <p className="text-xs text-slate-500 mt-1 max-w-xs">
+          Catat pengeluaran pertamamu bulan ini untuk melihat analisis persentase kategori di sini.
+        </p>
+      </div>
+    );
+  }
+
+  const radius = 64;
+  const circumference = 2 * Math.PI * radius;
+  let cumulativePercent = 0;
+
+  return (
+    <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-blue-50">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-bold text-slate-800 text-base sm:text-lg">Distribusi Pengeluaran</h3>
+          <p className="text-xs text-slate-500">Persentase kategori bulan berjalan</p>
+        </div>
+        <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700">
+          {chartData.items.length} Kategori
+        </span>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        <div className="relative w-44 h-44 flex-shrink-0 flex items-center justify-center">
+          <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 160 160">
+            <circle
+              cx="80"
+              cy="80"
+              r={radius}
+              fill="transparent"
+              stroke="#EFF6FF"
+              strokeWidth="22"
+            />
+            {chartData.items.map((item, index) => {
+              const strokeDasharray = `${(item.percentage / 100) * circumference} ${circumference}`;
+              const strokeDashoffset = -((cumulativePercent / 100) * circumference);
+              cumulativePercent += item.percentage;
+
+              const isHovered = hoveredIdx === index;
+
+              return (
+                <circle
+                  key={item.category}
+                  cx="80"
+                  cy="80"
+                  r={radius}
+                  fill="transparent"
+                  stroke={item.color}
+                  strokeWidth={isHovered ? '26' : '22'}
+                  strokeDasharray={strokeDasharray}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="butt"
+                  className="transition-all duration-300 cursor-pointer"
+                  onMouseEnter={() => setHoveredIdx(index)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  onClick={() => setHoveredIdx(hoveredIdx === index ? null : index)}
+                />
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 pointer-events-none">
+            <span className="text-[11px] font-medium text-slate-400">
+              {hoveredIdx !== null ? chartData.items[hoveredIdx].category : 'Total Keluar'}
+            </span>
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 line-clamp-1">
+              {hoveredIdx !== null
+                ? `${chartData.items[hoveredIdx].percentage}%`
+                : formatRupiah(chartData.total)}
+            </span>
+          </div>
+        </div>
+
+        <div className="w-full space-y-2.5">
+          {chartData.items.map((item, idx) => (
+            <div
+              key={item.category}
+              onMouseEnter={() => setHoveredIdx(idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              onClick={() => setHoveredIdx(hoveredIdx === idx ? null : idx)}
+              className={`flex items-center justify-between p-2 rounded-xl transition-colors cursor-pointer ${
+                hoveredIdx === idx ? 'bg-blue-50/80' : 'hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="text-xs sm:text-sm font-medium text-slate-700 truncate">
+                  {item.category}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                <span className="text-xs font-semibold text-slate-800">
+                  {formatRupiah(item.amount)}
+                </span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 w-12 text-right">
+                  {item.percentage}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [supabaseReady, setSupabaseReady] = useState(false);
+
+  useEffect(() => {
+    if (!window.supabase) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      script.async = true;
+      script.onload = () => setSupabaseReady(true);
+      document.head.appendChild(script);
+    } else {
+      setSupabaseReady(true);
+    }
+  }, []);
+
+  // Perbaikan utama: Menggunakan localStorage agar konfigurasi tersimpan permanen & terbaca langsung
+  const [sbConfig, setSbConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ruanguang_sb_config') || sessionStorage.getItem('ruanguang_sb_config');
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return { url: DEFAULT_SUPABASE_URL, key: DEFAULT_SUPABASE_ANON_KEY };
+  });
+
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showSqlModal, setShowSqlModal] = useState(false);
+
+  const supabase = useMemo(() => {
+    if (!supabaseReady) return null;
+    try {
+      if (!sbConfig.url || !sbConfig.url.startsWith('http') || sbConfig.url.includes('your-project-id')) return null;
+      if (!sbConfig.key || sbConfig.key === 'your-anon-key') return null;
+      return createClient(sbConfig.url, sbConfig.key);
+    } catch (e) {
+      return null;
+    }
+  }, [sbConfig, supabaseReady]);
+
+  const isSupabaseConfigured =
+    sbConfig.url &&
+    sbConfig.url.startsWith('http') &&
+    !sbConfig.url.includes('your-project-id') &&
+    sbConfig.key &&
+    sbConfig.key !== 'your-anon-key';
+
+  const [isAdminRoute, setIsAdminRoute] = useState(() => {
+    return window.location.pathname === '/admin-lisensi' || window.location.hash === '#/admin-lisensi';
+  });
+
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions, setTransactions] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+
+  const [streakData, setStreakData] = useState({
+    current_streak: 0,
+    longest_streak: 0,
+    previous_streak: 0,
+    last_log_date: null,
+    last_restore_month: null,
+  });
+  const [streakStatus, setStreakStatus] = useState('inactive');
+  const [showExtinguishedBanner, setShowExtinguishedBanner] = useState(false);
+  const [showStreakDetailModal, setShowStreakDetailModal] = useState(false);
+  const [restoringStreak, setRestoringStreak] = useState(false);
+
+  const [toast, setToast] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type, id: Date.now() });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsAdminRoute(
+        window.location.pathname === '/admin-lisensi' || window.location.hash === '#/admin-lisensi'
+      );
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, []);
+
+  const navigateToAdmin = () => {
+    try {
+      window.history.pushState({}, '', '/admin-lisensi');
+    } catch (_) {
+      window.location.hash = '#/admin-lisensi';
+    }
+    setIsAdminRoute(true);
+  };
+
+  const navigateToApp = () => {
+    try {
+      window.history.pushState({}, '', '/');
+    } catch (_) {
+      window.location.hash = '';
+    }
+    setIsAdminRoute(false);
+  };
+
+  useEffect(() => {
+    if (!supabase || !isSupabaseConfigured) {
+      setAuthLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    const initSession = async () => {
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setSession(currentSession);
+        if (currentSession?.user) {
+          await fetchUserProfile(currentSession.user.id);
+        }
+      } catch (err) {
+        console.error('Auth session error:', err);
+      } finally {
+        if (mounted) setAuthLoading(false);
+      }
+    };
+
+    initSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      if (!mounted) return;
+      setSession(newSession);
+      if (newSession?.user) {
+        await fetchUserProfile(newSession.user.id);
+      } else {
+        setProfile(null);
+        setIsUnlocked(false);
+        setTransactions([]);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
+  }, [supabase, isSupabaseConfigured]);
+
+  const fetchUserProfile = async (userId) => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) {
+        setProfile(data);
+      }
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (session?.user && isUnlocked && supabase) {
+      loadUserFinancialData(session.user.id);
+    }
+  }, [session, isUnlocked, supabase]);
+
+  const loadUserFinancialData = async (userId) => {
+    setLoadingData(true);
+    try {
+      const { data: txData, error: txError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (txError) throw txError;
+      setTransactions(txData || []);
+      await evaluateUserStreakOnOpen(userId);
+    } catch (err) {
+      showToast(`Gagal memuat data: ${err.message}`, 'error');
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const evaluateUserStreakOnOpen = async (userId) => {
+    const todayStr = getJakartaDateStr(0);
+    const yesterdayStr = getJakartaDateStr(-1);
+
+    let { data: streak, error } = await supabase
+      .from('user_streaks')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) return;
+
+    if (!streak) {
+      const initialStreak = {
+        user_id: userId,
+        current_streak: 0,
+        longest_streak: 0,
+        previous_streak: 0,
+        last_log_date: null,
+        last_restore_month: null,
+      };
+      const { data: inserted } = await supabase
+        .from('user_streaks')
+        .insert(initialStreak)
+        .select()
+        .single();
+      streak = inserted || initialStreak;
+    }
+
+    const lastDate = streak.last_log_date;
+    const diffDays = getDaysDifference(lastDate, todayStr);
+
+    if (!lastDate || streak.current_streak === 0) {
+      if (diffDays === 2 && streak.previous_streak > 0) {
+        setStreakData(streak);
+        setStreakStatus('extinguished');
+        setShowExtinguishedBanner(true);
+      } else {
+        setStreakData(streak);
+        setStreakStatus('inactive');
+      }
+      return;
+    }
+
+    if (lastDate === todayStr) {
+      setStreakData(streak);
+      setStreakStatus('active_today');
+    } else if (lastDate === yesterdayStr || diffDays === 1) {
+      setStreakData(streak);
+      setStreakStatus('warning_yesterday');
+    } else if (diffDays === 2 && streak.current_streak > 0) {
+      const updatedFields = {
+        previous_streak: streak.current_streak,
+        current_streak: 0,
+      };
+      const { data: updatedStreak } = await supabase
+        .from('user_streaks')
+        .update(updatedFields)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      setStreakData(updatedStreak || { ...streak, ...updatedFields });
+      setStreakStatus('extinguished');
+      setShowExtinguishedBanner(true);
+    } else if (diffDays > 2) {
+      const updatedFields = {
+        previous_streak: 0,
+        current_streak: 0,
+      };
+      const { data: updatedStreak } = await supabase
+        .from('user_streaks')
+        .update(updatedFields)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      setStreakData(updatedStreak || { ...streak, ...updatedFields });
+      setStreakStatus('inactive');
+    }
+  };
+
+  const updateStreakAfterNewTransaction = async (userId) => {
+    const todayStr = getJakartaDateStr(0);
+    const yesterdayStr = getJakartaDateStr(-1);
+
+    const { data: streak } = await supabase
+      .from('user_streaks')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const current = streak || {
+      user_id: userId,
+      current_streak: 0,
+      longest_streak: 0,
+      previous_streak: 0,
+      last_log_date: null,
+      last_restore_month: null,
+    };
+
+    const lastDate = current.last_log_date;
+
+    if (lastDate === todayStr && current.current_streak > 0) {
+      setStreakData(current);
+      setStreakStatus('active_today');
+      return;
+    }
+
+    let newCurrentStreak = 1;
+    let shouldNotifyIncrement = false;
+
+    if (lastDate === yesterdayStr && current.current_streak > 0) {
+      newCurrentStreak = current.current_streak + 1;
+      shouldNotifyIncrement = true;
+    } else {
+      newCurrentStreak = 1;
+      shouldNotifyIncrement = current.current_streak === 0 ? false : true;
+    }
+
+    const newLongest = Math.max(current.longest_streak || 0, newCurrentStreak);
+
+    const payload = {
+      user_id: userId,
+      current_streak: newCurrentStreak,
+      longest_streak: newLongest,
+      previous_streak: 0,
+      last_log_date: todayStr,
+      last_restore_month: current.last_restore_month,
+    };
+
+    const { data: savedStreak, error } = await supabase
+      .from('user_streaks')
+      .upsert(payload)
+      .select()
+      .single();
+
+    if (!error && savedStreak) {
+      setStreakData(savedStreak);
+      setStreakStatus('active_today');
+      setShowExtinguishedBanner(false);
+
+      if (shouldNotifyIncrement) {
+        showToast(`🔥 Mantap! Streak kamu bertambah menjadi ${newCurrentStreak} hari!`, 'streak');
+      } else if (newCurrentStreak === 1) {
+        showToast('🔥 Streak dimulai! Hari ke-1 tercatat.', 'streak');
+      }
+    }
+  };
+
+  const handleRestoreStreak = async () => {
+    if (!session?.user || !supabase) return;
+    const currentYM = getJakartaYearMonth();
+    if (streakData.last_restore_month === currentYM) {
+      showToast('Jatah pemulihan bulan ini sudah habis (0/1).', 'error');
+      return;
+    }
+
+    setRestoringStreak(true);
+    try {
+      const yesterdayStr = getJakartaDateStr(-1);
+      const restoredValue = streakData.previous_streak || 1;
+
+      const updatedFields = {
+        current_streak: restoredValue,
+        last_log_date: yesterdayStr,
+        last_restore_month: currentYM,
+      };
+
+      const { data: updated, error } = await supabase
+        .from('user_streaks')
+        .update(updatedFields)
+        .eq('user_id', session.user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setStreakData(updated);
+      setStreakStatus('warning_yesterday');
+      setShowExtinguishedBanner(false);
+      showToast(
+        `✨ Api dipulihkan menjadi ${restoredValue} hari! Catat 1 transaksi hari ini agar bertambah.`,
+        'success'
+      );
+    } catch (err) {
+      showToast(`Gagal memulihkan api: ${err.message}`, 'error');
+    } finally {
+      setRestoringStreak(false);
+    }
+  };
+
+  if (isAdminRoute) {
+    return (
+      <AdminLicensePortal
+        supabase={supabase}
+        isSupabaseConfigured={isSupabaseConfigured}
+        onBackToApp={navigateToApp}
+        onOpenConfig={() => setShowConfigModal(true)}
+        onOpenSql={() => setShowSqlModal(true)}
+        showToast={showToast}
+        toast={toast}
+        ConfigModals={
+          <>
+            {showConfigModal && (
+              <SupabaseConfigModal
+                sbConfig={sbConfig}
+                onSave={(newCfg) => {
+                  setSbConfig(newCfg);
+                  localStorage.setItem('ruanguang_sb_config', JSON.stringify(newCfg));
+                  setShowConfigModal(false);
+                  showToast('Konfigurasi Supabase disimpan!', 'success');
+                }}
+                onClose={() => setShowConfigModal(false)}
+              />
+            )}
+            {showSqlModal && (
+              <SqlSchemaModal onClose={() => setShowSqlModal(false)} showToast={showToast} />
+            )}
+          </>
+        }
+      />
+    );
+  }
+
+  if (authLoading || !supabaseReady) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-900 flex flex-col items-center justify-center text-white p-6">
+        <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center mb-4 animate-pulse shadow-xl">
+          <Wallet className="w-8 h-8 text-white" />
+        </div>
+        <h1 className="text-2xl font-extrabold tracking-tight">RuangUang</h1>
+        <p className="text-blue-200 text-sm mt-1">Memuat brankas keuanganmu...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
+        <ToastNotification toast={toast} onClose={() => setToast(null)} />
+
+        <AuthScreen
+          supabase={supabase}
+          isSupabaseConfigured={isSupabaseConfigured}
+          onSuccessAuth={(newSession, newProfile) => {
+            setSession(newSession);
+            if (newProfile) setProfile(newProfile);
+            setIsUnlocked(false);
+          }}
+          onOpenConfig={() => setShowConfigModal(true)}
+          onOpenSql={() => setShowSqlModal(true)}
+          onGoAdmin={navigateToAdmin}
+          showToast={showToast}
+        />
+
+        {showConfigModal && (
+          <SupabaseConfigModal
+            sbConfig={sbConfig}
+            onSave={(newCfg) => {
+              setSbConfig(newCfg);
+              localStorage.setItem('ruanguang_sb_config', JSON.stringify(newCfg));
+              setShowConfigModal(false);
+              showToast('Konfigurasi Supabase berhasil diperbarui!', 'success');
+            }}
+            onClose={() => setShowConfigModal(false)}
+          />
+        )}
+
+        {showSqlModal && (
+          <SqlSchemaModal onClose={() => setShowSqlModal(false)} showToast={showToast} />
+        )}
+      </div>
+    );
+  }
+
+  if (!isUnlocked) {
+    return (
+      <PinLockScreen
+        email={session.user.email}
+        savedPin={profile?.security_pin}
+        onVerifySuccess={() => {
+          setIsUnlocked(true);
+          setPinInput('');
+          setPinError('');
+        }}
+        onSaveMissingPin={async (newPin) => {
+          const { data, error } = await supabase
+            .from('profiles')
+            .upsert({
+              id: session.user.id,
+              email: session.user.email,
+              security_pin: newPin,
+            })
+            .select()
+            .single();
+          if (!error && data) {
+            setProfile(data);
+            setIsUnlocked(true);
+            showToast('PIN Keamanan 6-Digit berhasil diatur!', 'success');
+          }
+        }}
+        onLogout={async () => {
+          await supabase.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          setIsUnlocked(false);
+        }}
+      />
+    );
+  }
+
+  const currentMonth = getJakartaYearMonth();
+
+  const financialSummary = useMemo(() => {
+    let totalAllIncome = 0;
+    let totalAllExpense = 0;
+    let monthIncome = 0;
+    let monthExpense = 0;
+
+    transactions.forEach((tx) => {
+      const amt = Number(tx.amount) || 0;
+      const isThisMonth = tx.transaction_date?.startsWith(currentMonth);
+
+      if (tx.type === 'income') {
+        totalAllIncome += amt;
+        if (isThisMonth) monthIncome += amt;
+      } else {
+        totalAllExpense += amt;
+        if (isThisMonth) monthExpense += amt;
+      }
+    });
+
+    return {
+      totalBalance: totalAllIncome - totalAllExpense,
+      monthIncome,
+      monthExpense,
+    };
+  }, [transactions, currentMonth]);
+
+  const handleSaveTransaction = async (txPayload) => {
+    if (!supabase || !session?.user) return false;
+    try {
+      if (editingTransaction) {
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            type: txPayload.type,
+            category: txPayload.category,
+            amount: txPayload.amount,
+            note: txPayload.note,
+            transaction_date: txPayload.transaction_date,
+          })
+          .eq('id', editingTransaction.id)
+          .eq('user_id', session.user.id);
+
+        if (error) throw error;
+        showToast('Transaksi berhasil diperbarui!', 'success');
+        setEditingTransaction(null);
+      } else {
+        const { error } = await supabase.from('transactions').insert({
+          user_id: session.user.id,
+          type: txPayload.type,
+          category: txPayload.category,
+          amount: txPayload.amount,
+          note: txPayload.note,
+          transaction_date: txPayload.transaction_date,
+        });
+
+        if (error) throw error;
+        showToast('Transaksi berhasil dicatat!', 'success');
+        await updateStreakAfterNewTransaction(session.user.id);
+      }
+
+      const { data: refreshed } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      setTransactions(refreshed || []);
+      setActiveTab('dashboard');
+      return true;
+    } catch (err) {
+      showToast(`Gagal menyimpan transaksi: ${err.message}`, 'error');
+      return false;
+    }
+  };
+
+  const handleDeleteTransaction = (tx) => {
+    setConfirmDialog({
+      title: 'Hapus Transaksi?',
+      message: `Yakin ingin menghapus catatan "${tx.category}" sebesar ${formatRupiah(tx.amount)}? Tindakan ini tidak dapat dibatalkan.`,
+      confirmText: 'Ya, Hapus',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', tx.id)
+            .eq('user_id', session.user.id);
+
+          if (error) throw error;
+          setTransactions((prev) => prev.filter((item) => item.id !== tx.id));
+          showToast('Transaksi telah dihapus.', 'info');
+        } catch (err) {
+          showToast(`Gagal menghapus: ${err.message}`, 'error');
+        } finally {
+          setConfirmDialog(null);
+        }
+      },
+    });
+  };
+
+  const isRestoreAvailable = streakData.last_restore_month !== getJakartaYearMonth();
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 pb-24 md:pb-10">
+      <ToastNotification toast={toast} onClose={() => setToast(null)} />
+
+      {confirmDialog && (
+        <ConfirmModal
+          dialog={confirmDialog}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-lg border-b border-blue-100/80">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+          <div
+            onClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('dashboard');
+            }}
+            className="flex items-center gap-2.5 cursor-pointer"
+          >
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-extrabold text-lg tracking-tight text-slate-900 block leading-none">
+                Ruang<span className="text-blue-600">Uang</span>
+              </span>
+              <span className="text-[10px] font-medium text-blue-600/80 tracking-wide">
+                PREMIUM FINANCE
+              </span>
+            </div>
+          </div>
+
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 p-1 rounded-2xl">
+            <button
+              onClick={() => {
+                setEditingTransaction(null);
+                setActiveTab('dashboard');
+              }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === 'dashboard'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => {
+                setEditingTransaction(null);
+                setActiveTab('add');
+              }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === 'add'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              + Transaksi
+            </button>
+            <button
+              onClick={() => {
+                setEditingTransaction(null);
+                setActiveTab('history');
+              }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === 'history'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Riwayat
+            </button>
+            <button
+              onClick={() => {
+                setEditingTransaction(null);
+                setActiveTab('profile');
+              }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === 'profile'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Profil
+            </button>
+          </nav>
+
+          <button
+            onClick={() => setShowStreakDetailModal(true)}
+            title="Lihat Detail Daily Streak"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all active:scale-95 ${
+              streakStatus === 'active_today'
+                ? 'bg-orange-50 border-orange-200 text-orange-600 shadow-sm shadow-orange-500/10'
+                : streakStatus === 'warning_yesterday'
+                ? 'bg-amber-50 border-amber-200 text-amber-600'
+                : 'bg-slate-100 border-slate-200 text-slate-500'
+            }`}
+          >
+            <Flame
+              className={`w-4 h-4 sm:w-5 sm:h-5 ${
+                streakStatus === 'active_today'
+                  ? 'text-orange-500 fill-orange-500 animate-pulse'
+                  : streakStatus === 'warning_yesterday'
+                  ? 'text-amber-500 fill-amber-400'
+                  : 'text-slate-400 fill-slate-300'
+              }`}
+            />
+            <span className="font-extrabold text-xs sm:text-sm">
+              {streakData.current_streak || 0}
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 pt-5 space-y-5">
+        {streakStatus === 'warning_yesterday' && activeTab === 'dashboard' && (
+          <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Flame className="w-5 h-5 text-amber-600 fill-amber-400" />
+              </div>
+              <p className="text-xs sm:text-sm font-medium text-amber-900">
+                Catat transaksi hari ini agar apimu tidak padam!
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('add')}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl flex-shrink-0 transition-colors"
+            >
+              Catat Sekarang
+            </button>
+          </div>
+        )}
+
+        {showExtinguishedBanner && streakData.previous_streak > 0 && (
+          <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white rounded-3xl p-5 shadow-lg border border-slate-700 relative overflow-hidden">
+            <button
+              onClick={() => setShowExtinguishedBanner(false)}
+              className="absolute top-3.5 right-3.5 text-slate-400 hover:text-white p-1"
+              aria-label="Tutup banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-6">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-slate-700/80 flex items-center justify-center flex-shrink-0">
+                  <Flame className="w-7 h-7 text-slate-400 fill-slate-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    😢 Apimu padam! Kamu melewatkan catatan kemarin.
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Streak sebelumnya mencapai{' '}
+                    <span className="font-bold text-orange-400">
+                      {streakData.previous_streak} hari
+                    </span>
+                    . Pulihkan sekarang sebelum streak kembali dari 0!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex-shrink-0">
+                {isRestoreAvailable ? (
+                  <button
+                    onClick={handleRestoreStreak}
+                    disabled={restoringStreak}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    {restoringStreak
+                      ? 'Memulihkan...'
+                      : 'Pulihkan Api (Sisa jatah bulan ini: 1/1)'}
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-700 text-slate-400 font-semibold text-xs cursor-not-allowed"
+                  >
+                    Jatah pemulihan bulan ini sudah habis (0/1)
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <DashboardView
+            summary={financialSummary}
+            transactions={transactions}
+            currentMonth={currentMonth}
+            loading={loadingData}
+            onAddClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('add');
+            }}
+            onSeeAllHistory={() => setActiveTab('history')}
+          />
+        )}
+
+        {activeTab === 'add' && (
+          <TransactionFormView
+            editingTransaction={editingTransaction}
+            onCancelEdit={() => {
+              setEditingTransaction(null);
+              setActiveTab('history');
+            }}
+            onSave={handleSaveTransaction}
+          />
+        )}
+
+        {activeTab === 'history' && (
+          <HistoryView
+            transactions={transactions}
+            onEdit={(tx) => {
+              setEditingTransaction(tx);
+              setActiveTab('add');
+            }}
+            onDelete={handleDeleteTransaction}
+          />
+        )}
+
+        {activeTab === 'profile' && (
+          <ProfileView
+            user={session.user}
+            profile={profile}
+            transactions={transactions}
+            streakData={streakData}
+            onUpdatePin={async (newPin) => {
+              const { data, error } = await supabase
+                .from('profiles')
+                .upsert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  security_pin: newPin,
+                })
+                .select()
+                .single();
+
+              if (error) {
+                showToast(`Gagal mengubah PIN: ${error.message}`, 'error');
+                return false;
+              }
+              setProfile(data);
+              showToast('PIN Keamanan 6-Digit berhasil diperbarui!', 'success');
+              return true;
+            }}
+            onLockNow={() => {
+              setIsUnlocked(false);
+              setPinInput('');
+              showToast('Aplikasi dikunci.', 'info');
+            }}
+            onLogout={async () => {
+              await supabase.auth.signOut();
+              setSession(null);
+              setProfile(null);
+              setIsUnlocked(false);
+            }}
+            showToast={showToast}
+          />
+        )}
+      </main>
+
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-lg border-t border-slate-200/80 px-2 py-1.5 safe-area-pb">
+        <div className="grid grid-cols-4 items-center max-w-md mx-auto">
+          <button
+            onClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('dashboard');
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors ${
+              activeTab === 'dashboard' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[11px] font-semibold mt-1">Dashboard</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('add');
+            }}
+            className="flex flex-col items-center justify-center py-1 group"
+          >
+            <div
+              className={`w-11 h-11 -mt-5 rounded-2xl flex items-center justify-center shadow-lg transition-transform active:scale-95 ${
+                activeTab === 'add'
+                  ? 'bg-blue-700 text-white shadow-blue-600/30'
+                  : 'bg-gradient-to-tr from-blue-600 to-blue-500 text-white shadow-blue-500/30'
+              }`}
+            >
+              <PlusCircle className="w-6 h-6" />
+            </div>
+            <span
+              className={`text-[11px] font-semibold mt-1 ${
+                activeTab === 'add' ? 'text-blue-600' : 'text-slate-500'
+              }`}
+            >
+              Tambah
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('history');
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors ${
+              activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <History className="w-5 h-5" />
+            <span className="text-[11px] font-semibold mt-1">Riwayat</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingTransaction(null);
+              setActiveTab('profile');
+            }}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors ${
+              activeTab === 'profile' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <User className="w-5 h-5" />
+            <span className="text-[11px] font-semibold mt-1">Profil</span>
+          </button>
+        </div>
+      </nav>
+
+      {showStreakDetailModal && (
+        <StreakDetailModal
+          streakData={streakData}
+          streakStatus={streakStatus}
+          isRestoreAvailable={isRestoreAvailable}
+          restoringStreak={restoringStreak}
+          onRestore={handleRestoreStreak}
+          onClose={() => setShowStreakDetailModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardView({ summary, transactions, currentMonth, loading, onAddClick, onSeeAllHistory }) {
+  const recentFive = transactions.slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-3xl p-5 sm:p-7 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden">
+        <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-12 w-44 h-44 rounded-full bg-blue-400/10 blur-xl pointer-events-none" />
+
+        <div className="relative z-10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs sm:text-sm font-medium text-blue-100 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-200" />
+              Total Saldo Keseluruhan
+            </span>
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white/15 text-white backdrop-blur-sm">
+              IDR • Rupiah
+            </span>
+          </div>
+
+          <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight mt-2 break-words">
+            {loading ? 'Memuat...' : formatRupiah(summary.totalBalance)}
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3 mt-6 pt-5 border-t border-white/15">
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3 sm:p-4">
+              <div className="flex items-center gap-2 text-emerald-300 text-xs font-semibold">
+                <div className="w-6 h-6 rounded-lg bg-emerald-400/20 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                </div>
+                <span className="truncate">Pemasukan Bulan Ini</span>
+              </div>
+              <p className="text-sm sm:text-lg font-bold text-white mt-1.5 truncate">
+                {formatRupiah(summary.monthIncome)}
+              </p>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3 sm:p-4">
+              <div className="flex items-center gap-2 text-rose-200 text-xs font-semibold">
+                <div className="w-6 h-6 rounded-lg bg-rose-400/20 flex items-center justify-center flex-shrink-0">
+                  <TrendingDown className="w-3.5 h-3.5" />
+                </div>
+                <span className="truncate">Pengeluaran Bulan Ini</span>
+              </div>
+              <p className="text-sm sm:text-lg font-bold text-white mt-1.5 truncate">
+                {formatRupiah(summary.monthExpense)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ExpenseDonutChart transactions={transactions} currentMonth={currentMonth} />
+
+      <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-blue-50">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-bold text-slate-800 text-base sm:text-lg">5 Transaksi Terakhir</h3>
+            <p className="text-xs text-slate-500">Aktivitas keuangan terbaru Anda</p>
+          </div>
+          {transactions.length > 0 && (
+            <button
+              onClick={onSeeAllHistory}
+              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors"
+            >
+              Semua <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {recentFive.length === 0 ? (
+          <div className="text-center py-8 px-4">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-3">
+              <Receipt className="w-7 h-7" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700">Belum ada transaksi tercatat</p>
+            <p className="text-xs text-slate-500 mt-1 mb-4">
+              Mulai catat pemasukan atau pengeluaran harianmu sekarang!
+            </p>
+            <button
+              onClick={onAddClick}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all"
+            >
+              + Tambah Transaksi Pertama
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {recentFive.map((tx) => {
+              const meta = getCategoryMeta(tx.type, tx.category);
+              const IconComp = meta.icon;
+              const isIncome = tx.type === 'income';
+
+              return (
+                <div
+                  key={tx.id}
+                  className="py-3.5 first:pt-1 last:pb-1 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}
+                    >
+                      <IconComp className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{tx.category}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {tx.note ? tx.note : formatTanggalIndo(tx.transaction_date)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right flex-shrink-0">
+                    <p
+                      className={`text-sm font-extrabold ${
+                        isIncome ? 'text-emerald-600' : 'text-rose-600'
+                      }`}
+                    >
+                      {isIncome ? '+' : '-'} {formatRupiah(tx.amount)}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{tx.transaction_date}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TransactionFormView({ editingTransaction, onCancelEdit, onSave }) {
+  const [type, setType] = useState(editingTransaction?.type || 'expense');
+  const [rawAmount, setRawAmount] = useState(
+    editingTransaction ? String(editingTransaction.amount) : ''
+  );
+  const [category, setCategory] = useState(
+    editingTransaction?.category || CATEGORIES.expense[0].id
+  );
+  const [transactionDate, setTransactionDate] = useState(
+    editingTransaction?.transaction_date || getJakartaDateStr(0)
+  );
+  const [note, setNote] = useState(editingTransaction?.note || '');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleTypeChange = (newType) => {
+    setType(newType);
+    const validCategories = CATEGORIES[newType].map((c) => c.id);
+    if (!validCategories.includes(category)) {
+      setCategory(CATEGORIES[newType][0].id);
+    }
+  };
+
+  const formattedAmountDisplay = useMemo(() => {
+    if (!rawAmount) return '';
+    return rawAmount.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }, [rawAmount]);
+
+  const handleAmountChange = (e) => {
+    const digitsOnly = e.target.value.replace(/\D/g, '');
+    const cleaned = digitsOnly.replace(/^0+(?=\d)/, '');
+    setRawAmount(cleaned);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const numericAmount = Number(rawAmount);
+    if (!numericAmount || numericAmount <= 0) return;
+    setSubmitting(true);
+    await onSave({
+      type,
+      category,
+      amount: numericAmount,
+      transaction_date: transactionDate,
+      note: note.trim(),
+    });
+    setSubmitting(false);
+  };
+
+  const currentCategories = CATEGORIES[type] || [];
+
+  return (
+    <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-blue-50">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
+            {editingTransaction ? 'Edit Transaksi' : 'Catat Transaksi Baru'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pastikan nominal dan kategori sudah sesuai
+          </p>
+        </div>
+        {editingTransaction && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200"
+          >
+            Batal Edit
+          </button>
+        )}
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl">
+          <button
+            type="button"
+            onClick={() => handleTypeChange('expense')}
+            className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              type === 'expense'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <TrendingDown className="w-4 h-4" />
+            Pengeluaran
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTypeChange('income')}
+            className={`py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              type === 'income'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            Pemasukan
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Nominal Transaksi
+          </label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg sm:text-xl font-extrabold text-blue-600">
+              Rp
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              required
+              placeholder="0"
+              value={formattedAmountDisplay}
+              onChange={handleAmountChange}
+              className="w-full pl-14 pr-4 py-4 text-2xl sm:text-3xl font-extrabold text-slate-900 bg-blue-50/50 border-2 border-blue-100 focus:border-blue-600 focus:bg-white rounded-2xl outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+            Pilih Kategori
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {currentCategories.map((cat) => {
+              const IconComp = cat.icon;
+              const isSelected = category === cat.id;
+
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setCategory(cat.id)}
+                  className={`p-3 rounded-2xl border-2 text-left flex items-center gap-2.5 transition-all ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50/70 shadow-sm'
+                      : 'border-slate-100 hover:border-blue-200 bg-white'
+                  }`}
+                >
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${cat.bg}`}
+                  >
+                    <IconComp className="w-4 h-4" />
+                  </div>
+                  <span
+                    className={`text-xs font-bold leading-tight ${
+                      isSelected ? 'text-blue-900' : 'text-slate-700'
+                    }`}
+                  >
+                    {cat.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              Tanggal (WIB / Asia/Jakarta)
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                required
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                className="w-full px-4 py-3 text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              Catatan (Opsional)
+            </label>
+            <input
+              type="text"
+              placeholder="Contoh: Makan siang nasi padang..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full px-4 py-3 text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={submitting || !rawAmount || Number(rawAmount) <= 0}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-blue-600/25 transition-all active:scale-[0.99] disabled:opacity-50"
+        >
+          {submitting
+            ? 'Menyimpan...'
+            : editingTransaction
+            ? 'Simpan Perubahan'
+            : 'Simpan Transaksi'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function HistoryView({ transactions, onEdit, onDelete }) {
+  const [filterMonth, setFilterMonth] = useState(getJakartaYearMonth());
+  const [filterType, setFilterType] = useState('ALL');
+  const [filterCategory, setFilterCategory] = useState('ALL');
+
+  const allCategoryOptions = useMemo(() => {
+    const names = new Set([
+      ...CATEGORIES.expense.map((c) => c.id),
+      ...CATEGORIES.income.map((c) => c.id),
+    ]);
+    return Array.from(names);
+  }, []);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (filterMonth && filterMonth !== 'ALL') {
+        if (!tx.transaction_date?.startsWith(filterMonth)) return false;
+      }
+      if (filterType !== 'ALL' && tx.type !== filterType) return false;
+      if (filterCategory !== 'ALL' && tx.category !== filterCategory) return false;
+      return true;
+    });
+  }, [transactions, filterMonth, filterType, filterCategory]);
+
+  const groupedByDate = useMemo(() => {
+    const groups = {};
+    filteredTransactions.forEach((tx) => {
+      const dateKey = tx.transaction_date || 'Tanpa Tanggal';
+      if (!groups[dateKey]) {
+        groups[dateKey] = { date: dateKey, items: [], dayIncome: 0, dayExpense: 0 };
+      }
+      groups[dateKey].items.push(tx);
+      if (tx.type === 'income') groups[dateKey].dayIncome += Number(tx.amount);
+      else groups[dateKey].dayExpense += Number(tx.amount);
+    });
+
+    return Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredTransactions]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-blue-50 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+            <Filter className="w-4 h-4 text-blue-600" />
+            Riwayat Transaksi
+          </h2>
+          <span className="text-xs font-semibold text-slate-500">
+            {filteredTransactions.length} catatan
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              Bulan & Tahun
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="month"
+                value={filterMonth === 'ALL' ? '' : filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value || 'ALL')}
+                className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+              />
+              {filterMonth !== 'ALL' && (
+                <button
+                  onClick={() => setFilterMonth('ALL')}
+                  title="Tampilkan Semua Bulan"
+                  className="px-2.5 py-2 text-xs font-bold bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 flex-shrink-0"
+                >
+                  Semua
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 mb-1">
+              Tipe Transaksi
+            </label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+            >
+              <option value="ALL">Semua Tipe</option>
+              <option value="income">Pemasukan (+)</option>
+              <option value="expense">Pengeluaran (-)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 mb-1">Kategori</label>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+            >
+              <option value="ALL">Semua Kategori</option>
+              {allCategoryOptions.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {groupedByDate.length === 0 ? (
+        <div className="bg-white rounded-3xl p-10 text-center border border-blue-50">
+          <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <h3 className="font-bold text-slate-700 text-sm">Tidak ada transaksi ditemukan</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Coba ubah filter bulan, tipe, atau kategori di atas.
+          </p>
+        </div>
+      ) : (
+        groupedByDate.map((group) => (
+          <div
+            key={group.date}
+            className="bg-white rounded-3xl overflow-hidden shadow-sm border border-blue-50"
+          >
+            <div className="bg-blue-50/70 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-blue-100/60">
+              <span className="text-xs sm:text-sm font-extrabold text-blue-950">
+                {formatTanggalIndo(group.date)}
+              </span>
+              <div className="flex items-center gap-3 text-[11px] font-bold">
+                {group.dayIncome > 0 && (
+                  <span className="text-emerald-600">+{formatRupiah(group.dayIncome)}</span>
+                )}
+                {group.dayExpense > 0 && (
+                  <span className="text-rose-600">-{formatRupiah(group.dayExpense)}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {group.items.map((tx) => {
+                const meta = getCategoryMeta(tx.type, tx.category);
+                const IconComp = meta.icon;
+                const isIncome = tx.type === 'income';
+
+                return (
+                  <div
+                    key={tx.id}
+                    className="p-4 sm:px-5 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}
+                      >
+                        <IconComp className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{tx.category}</p>
+                        {tx.note && (
+                          <p className="text-xs text-slate-500 truncate mt-0.5">{tx.note}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                      <span
+                        className={`text-xs sm:text-sm font-extrabold ${
+                          isIncome ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
+                      >
+                        {isIncome ? '+' : '-'} {formatRupiah(tx.amount)}
+                      </span>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => onEdit(tx)}
+                          title="Edit Transaksi"
+                          className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onDelete(tx)}
+                          title="Hapus Transaksi"
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function ProfileView({
+  user,
+  profile,
+  transactions,
+  streakData,
+  onUpdatePin,
+  onLockNow,
+  onLogout,
+  showToast,
+}) {
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmNewPin, setConfirmNewPin] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
+
+  const handleExportCsv = () => {
+    if (!transactions || transactions.length === 0) {
+      showToast('Belum ada data transaksi untuk diekspor.', 'info');
+      return;
+    }
+
+    const headers = ['Tanggal', 'Tipe', 'Kategori', 'Nominal (IDR)', 'Catatan'];
+    const rows = transactions.map((tx) => [
+      tx.transaction_date,
+      tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran',
+      `"${(tx.category || '').replace(/"/g, '""')}"`,
+      tx.amount,
+      `"${(tx.note || '').replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `RuangUang_Laporan_${getJakartaDateStr(0)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Data keuangan berhasil diekspor ke CSV!', 'success');
+  };
+
+  const handleSaveNewPin = async (e) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(newPin)) {
+      showToast('PIN harus terdiri dari tepat 6 digit angka.', 'error');
+      return;
+    }
+    if (newPin !== confirmNewPin) {
+      showToast('Konfirmasi PIN tidak cocok.', 'error');
+      return;
+    }
+    setSavingPin(true);
+    const ok = await onUpdatePin(newPin);
+    setSavingPin(false);
+    if (ok) {
+      setShowPinModal(false);
+      setNewPin('');
+      setConfirmNewPin('');
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-blue-50 flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-2xl font-extrabold shadow-lg shadow-blue-600/20 flex-shrink-0">
+          {(user.email?.[0] || 'U').toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-extrabold mb-2">
+            <ShieldCheck className="w-4 h-4 text-blue-600" />
+            Akun Premium Terverifikasi
+          </div>
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 truncate">
+            {user.email}
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Rekor Streak Terbaik: <strong className="text-orange-600">{streakData.longest_streak || 0} Hari</strong> • Total Catatan: <strong className="text-slate-700">{transactions.length}</strong>
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-blue-50 divide-y divide-slate-100">
+        <button
+          onClick={() => setShowPinModal(true)}
+          className="w-full p-4 sm:px-6 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Ubah PIN Keamanan 6 Digit</p>
+              <p className="text-xs text-slate-500">Perbarui kode kunci aplikasi pribadi Anda</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400" />
+        </button>
+
+        <button
+          onClick={onLockNow}
+          className="w-full p-4 sm:px-6 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Kunci Aplikasi Sekarang</p>
+              <p className="text-xs text-slate-500">Tampilkan layar PIN keamanan segera</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400" />
+        </button>
+
+        <button
+          onClick={handleExportCsv}
+          className="w-full p-4 sm:px-6 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Download className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Ekspor Data ke CSV</p>
+              <p className="text-xs text-slate-500">Unduh seluruh riwayat transaksi untuk Excel</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-400" />
+        </button>
+
+        <button
+          onClick={onLogout}
+          className="w-full p-4 sm:px-6 flex items-center justify-between hover:bg-rose-50/60 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-rose-600">Logout</p>
+              <p className="text-xs text-slate-500">Keluar dari sesi akun RuangUang Anda</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-rose-300" />
+        </button>
+      </div>
+
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-extrabold text-slate-900 text-lg">Ubah PIN Keamanan</h3>
+              <button
+                onClick={() => setShowPinModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveNewPin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                  PIN Baru (6 Digit Angka)
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="••••••"
+                  className="w-full px-4 py-3 text-center text-xl tracking-[0.5em] font-extrabold bg-slate-50 border border-slate-200 rounded-2xl focus:border-blue-600 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                  Konfirmasi PIN Baru
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  value={confirmNewPin}
+                  onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="••••••"
+                  className="w-full px-4 py-3 text-center text-xl tracking-[0.5em] font-extrabold bg-slate-50 border border-slate-200 rounded-2xl focus:border-blue-600 outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingPin}
+                className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-600/20"
+              >
+                {savingPin ? 'Menyimpan...' : 'Simpan PIN Baru'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AuthScreen({
+  supabase,
+  isSupabaseConfigured,
+  onSuccessAuth,
+  onOpenConfig,
+  onOpenSql,
+  onGoAdmin,
+  showToast,
+}) {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [securityPin, setSecurityPin] = useState('');
+  const [licenseCode, setLicenseCode] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    if (!isSupabaseConfigured || !supabase) {
+      setErrorMsg('Harap hubungkan kredensial Supabase terlebih dahulu melalui tombol Pengaturan Database di bawah.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (mode === 'login') {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (error) throw error;
+        showToast('Berhasil masuk! Masukkan PIN keamanan Anda.', 'success');
+        onSuccessAuth(data.session, null);
+      } else {
+        if (!/^\d{6}$/.test(securityPin)) {
+          throw new Error('PIN Keamanan wajib terdiri dari tepat 6 digit angka.');
+        }
+
+        const cleanCode = licenseCode.trim().toUpperCase();
+        if (!cleanCode) {
+          throw new Error('Kode Aktivasi Lisensi wajib diisi.');
+        }
+
+        const { data: licenseRow, error: licError } = await supabase
+          .from('license_codes')
+          .select('*')
+          .eq('code', cleanCode)
+          .maybeSingle();
+
+        if (licError) {
+          throw new Error(`Gagal memverifikasi lisensi: ${licError.message}`);
+        }
+
+        if (!licenseRow || licenseRow.is_used === true) {
+          throw new Error('Kode lisensi tidak valid atau sudah digunakan oleh akun lain');
+        }
+
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+
+        if (signUpError) throw signUpError;
+        const newUser = signUpData.user;
+        if (!newUser) {
+          throw new Error('Pendaftaran gagal membuat pengguna. Periksa pengaturan konfirmasi email Supabase Anda.');
+        }
+
+        await supabase
+          .from('license_codes')
+          .update({
+            is_used: true,
+            used_by: newUser.id,
+            used_at: new Date().toISOString(),
+          })
+          .eq('code', cleanCode);
+
+        const newProfile = {
+          id: newUser.id,
+          email: email.trim(),
+          security_pin: securityPin,
+        };
+        await supabase.from('profiles').upsert(newProfile);
+
+        await supabase.from('user_streaks').upsert({
+          user_id: newUser.id,
+          current_streak: 0,
+          longest_streak: 0,
+          previous_streak: 0,
+          last_log_date: null,
+          last_restore_month: null,
+        });
+
+        showToast('Aktivasi Lisensi Berhasil! Akun Premium Anda siap digunakan.', 'success');
+
+        if (signUpData.session) {
+          onSuccessAuth(signUpData.session, newProfile);
+        } else {
+          setMode('login');
+          setErrorMsg('Akun berhasil dibuat! Silakan masuk dengan email & password Anda.');
+        }
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Terjadi kesalahan saat memproses permintaan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-blue-600/25 mb-3">
+            <Wallet className="w-7 h-7" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            Ruang<span className="text-blue-600">Uang</span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Manajemen Keuangan Pribadi Premium & Terproteksi
+          </p>
+        </div>
+
+        {!isSupabaseConfigured && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Koneksi Supabase Belum Diatur</p>
+              <p className="mt-0.5 text-amber-800">
+                Masukkan URL & Anon Key Supabase Anda melalui tombol{' '}
+                <button onClick={onOpenConfig} className="underline font-bold">
+                  Pengaturan Database
+                </button>{' '}
+                di bawah.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xl shadow-slate-200/60 border border-blue-50">
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setErrorMsg('');
+              }}
+              className={`py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                mode === 'login'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Masuk (Login)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('register');
+                setErrorMsg('');
+              }}
+              className={`py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                mode === 'register'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Aktivasi & Daftar
+            </button>
+          </div>
+
+          {errorMsg && (
+            <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Alamat Email</label>
+              <input
+                type="email"
+                required
+                placeholder="nama@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 text-sm bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Password</label>
+              <div className="relative">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="Minimal 6 karakter"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-4 pr-11 py-3 text-sm bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {mode === 'register' && (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    PIN Keamanan Aplikasi (6 Digit Angka)
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    required
+                    placeholder="Contoh: 123456"
+                    value={securityPin}
+                    onChange={(e) => setSecurityPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full px-4 py-3 text-sm tracking-widest font-bold bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none transition-all"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Digunakan untuk membuka kunci aplikasi setiap kali dibuka.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-blue-700 mb-1.5 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5" />
+                    Kode Aktivasi Lisensi (Wajib)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VIP-XXXX-XX"
+                    value={licenseCode}
+                    onChange={(e) => setLicenseCode(e.target.value.toUpperCase())}
+                    className="w-full px-4 py-3 text-sm font-mono font-bold uppercase tracking-wider bg-blue-50/60 border-2 border-blue-200 focus:border-blue-600 focus:bg-white rounded-2xl outline-none transition-all text-blue-900"
+                  />
+                </div>
+              </>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-extrabold text-sm shadow-lg shadow-blue-600/25 transition-all active:scale-[0.99] disabled:opacity-60 mt-2"
+            >
+              {loading
+                ? 'Memproses...'
+                : mode === 'login'
+                ? 'Masuk ke RuangUang'
+                : 'Verifikasi Lisensi & Daftar'}
+            </button>
+          </form>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-500">
+          <button
+            type="button"
+            onClick={onOpenConfig}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 text-slate-700 font-semibold shadow-sm"
+          >
+            <Database className="w-3.5 h-3.5 text-blue-600" />
+            Pengaturan Database
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSql}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-blue-300 text-slate-700 font-semibold shadow-sm"
+          >
+            <Info className="w-3.5 h-3.5 text-indigo-600" />
+            Skema SQL Supabase
+          </button>
+
+          <button
+            type="button"
+            onClick={onGoAdmin}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow-sm"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            Portal Admin
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinLockScreen({ email, savedPin, onVerifySuccess, onSaveMissingPin, onLogout }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+
+  const handleDigitPress = (digit) => {
+    if (pin.length >= 6) return;
+    const next = pin + digit;
+    setPin(next);
+    setError('');
+
+    if (next.length === 6) {
+      setTimeout(() => {
+        if (!savedPin) {
+          onSaveMissingPin(next);
+        } else if (next === String(savedPin)) {
+          onVerifySuccess();
+        } else {
+          setError('PIN Keamanan salah. Silakan coba lagi.');
+          setPin('');
+        }
+      }, 150);
+    }
+  };
+
+  const handleBackspace = () => {
+    setPin((prev) => prev.slice(0, -1));
+    setError('');
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (/^\d$/.test(e.key)) {
+        handleDigitPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-600 via-blue-700 to-indigo-900 text-white flex flex-col items-center justify-between p-6">
+      <div className="w-full max-w-xs flex items-center justify-between pt-2">
+        <span className="text-xs font-bold tracking-wider uppercase text-blue-200 flex items-center gap-1.5">
+          <Lock className="w-3.5 h-3.5" /> RuangUang Lock
+        </span>
+        <button
+          onClick={onLogout}
+          className="text-xs font-semibold text-blue-200 hover:text-white underline"
+        >
+          Ganti Akun
+        </button>
+      </div>
+
+      <div className="w-full max-w-xs flex flex-col items-center text-center my-auto py-4">
+        <div className="w-16 h-16 rounded-3xl bg-white/15 backdrop-blur-md flex items-center justify-center mb-4 shadow-lg">
+          <Lock className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-xl font-extrabold">
+          {savedPin ? 'Masukkan 6 Digit PIN Keamanan' : 'Buat 6 Digit PIN Keamanan'}
+        </h2>
+        <p className="text-xs text-blue-200 mt-1 truncate max-w-full">{email}</p>
+
+        <div className="flex items-center justify-center gap-3.5 my-7">
+          {[0, 1, 2, 3, 4, 5].map((idx) => (
+            <div
+              key={idx}
+              className={`w-4 h-4 rounded-full transition-all duration-200 ${
+                idx < pin.length
+                  ? 'bg-white scale-110 shadow-md shadow-white/50'
+                  : 'bg-white/25 border border-white/40'
+              }`}
+            />
+          ))}
+        </div>
+
+        {error && (
+          <p className="text-xs font-bold text-rose-200 bg-rose-500/30 px-3 py-1.5 rounded-xl mb-4">
+            {error}
+          </p>
+        )}
+
+        <div className="grid grid-cols-3 gap-3.5 w-full max-w-[260px]">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+            <button
+              key={digit}
+              type="button"
+              onClick={() => handleDigitPress(digit)}
+              className="h-14 rounded-2xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-xl font-extrabold backdrop-blur-sm transition-all active:scale-95"
+            >
+              {digit}
+            </button>
+          ))}
+          <div />
+          <button
+            type="button"
+            onClick={() => handleDigitPress('0')}
+            className="h-14 rounded-2xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-xl font-extrabold backdrop-blur-sm transition-all active:scale-95"
+          >
+            0
+          </button>
+          <button
+            type="button"
+            onClick={handleBackspace}
+            className="h-14 rounded-2xl bg-white/5 hover:bg-white/15 active:bg-white/25 text-xs font-bold uppercase tracking-wider flex items-center justify-center transition-all active:scale-95"
+          >
+            Hapus
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-blue-200/80 text-center">
+        Dilindungi enkripsi PIN RuangUang
+      </p>
+    </div>
+  );
+}
+
+function AdminLicensePortal({
+  supabase,
+  isSupabaseConfigured,
+  onBackToApp,
+  onOpenConfig,
+  onOpenSql,
+  showToast,
+  toast,
+  ConfigModals,
+}) {
+  const [adminPass, setAdminPass] = useState('');
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
+  const [passError, setPassError] = useState('');
+
+  const [licenses, setLicenses] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(null);
+
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    if (adminPass === ADMIN_MASTER_CODE) {
+      setIsAdminAuth(true);
+      setPassError('');
+    } else {
+      setPassError('Password Master Admin tidak valid.');
+    }
+  };
+
+  const fetchAllLicenses = async () => {
+    if (!supabase || !isSupabaseConfigured) return;
+    setLoadingList(true);
+    try {
+      const { data: codeList, error } = await supabase
+        .from('license_codes')
+        .select('*')
+        .order('is_used', { ascending: true });
+
+      if (error) throw error;
+
+      const usedUserIds = (codeList || []).map((c) => c.used_by).filter(Boolean);
+      let emailMap = {};
+
+      if (usedUserIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, email')
+          .in('id', usedUserIds);
+
+        (profilesData || []).forEach((p) => {
+          emailMap[p.id] = p.email;
+        });
+      }
+
+      const enriched = (codeList || []).map((item) => ({
+        ...item,
+        buyer_email: item.used_by ? emailMap[item.used_by] || item.used_by : null,
+      }));
+
+      setLicenses(enriched);
+    } catch (err) {
+      showToast(`Gagal memuat daftar lisensi: ${err.message}`, 'error');
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminAuth && isSupabaseConfigured) {
+      fetchAllLicenses();
+    }
+  }, [isAdminAuth, isSupabaseConfigured]);
+
+  const handleGenerate10Codes = async () => {
+    if (!supabase || !isSupabaseConfigured) {
+      showToast('Hubungkan Supabase terlebih dahulu!', 'error');
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      const newRows = [];
+
+      for (let i = 0; i < 10; i++) {
+        const numPart = Math.floor(1000 + Math.random() * 9000);
+        const char1 = chars[Math.floor(Math.random() * chars.length)];
+        const char2 = chars[Math.floor(Math.random() * chars.length)];
+        newRows.push({
+          code: `VIP-${numPart}-${char1}${char2}`,
+          is_used: false,
+        });
+      }
+
+      const { error } = await supabase.from('license_codes').insert(newRows);
+      if (error) throw error;
+
+      showToast('10 Kode Lisensi VIP baru berhasil dibuat!', 'success');
+      await fetchAllLicenses();
+    } catch (err) {
+      showToast(`Gagal membuat kode: ${err.message}`, 'error');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopyCode = (code) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = code;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopiedCode(code);
+      showToast(`Kode ${code} berhasil disalin!`, 'success');
+      setTimeout(() => setCopiedCode(null), 2000);
+    } catch (_) {
+      showToast('Gagal menyalin kode.', 'error');
+    }
+    document.body.removeChild(textArea);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 sm:p-6">
+      <ToastNotification toast={toast} onClose={() => {}} />
+      {ConfigModals}
+
+      <div className="max-w-4xl mx-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <button
+            onClick={onBackToApp}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Kembali ke Aplikasi
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenConfig}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-blue-300"
+            >
+              Pengaturan Supabase
+            </button>
+            <button
+              onClick={onOpenSql}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-indigo-300"
+            >
+              Skema SQL
+            </button>
+          </div>
+        </div>
+
+        {!isAdminAuth ? (
+          <div className="max-w-sm mx-auto mt-16 bg-slate-800/90 border border-slate-700 rounded-3xl p-6 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <h1 className="text-xl font-extrabold text-white">Portal Admin Lisensi</h1>
+            <p className="text-xs text-slate-400 mt-1 mb-5">
+              Masukkan Password Master penjual untuk mengelola kode aktivasi RuangUang.
+            </p>
+
+            {passError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-xs font-semibold text-rose-200">
+                {passError}
+              </div>
+            )}
+
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Password Master Admin
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="•••••••••"
+                  value={adminPass}
+                  onChange={(e) => setAdminPass(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 focus:border-blue-500 text-white text-sm outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-600/25"
+              >
+                Buka Brankas Lisensi
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="bg-slate-800 border border-slate-700 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400">
+                  ADMIN GENERATOR LISENSI
+                </span>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-0.5">
+                  Manajemen Kode Aktivasi RuangUang
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Total: {licenses.length} kode • Tersedia:{' '}
+                  <strong className="text-emerald-400">
+                    {licenses.filter((l) => !l.is_used).length}
+                  </strong>{' '}
+                  • Terpakai:{' '}
+                  <strong className="text-slate-300">
+                    {licenses.filter((l) => l.is_used).length}
+                  </strong>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={fetchAllLicenses}
+                  disabled={loadingList}
+                  className="p-3 rounded-2xl bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                  title="Muat Ulang"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingList ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={handleGenerate10Codes}
+                  disabled={generating}
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/25 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {generating ? 'Membuat...' : 'Buat 10 Kode Lisensi Baru'}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 rounded-3xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-800/60 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      <th className="py-3.5 px-4 sm:px-6">Kode Lisensi</th>
+                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4">Digunakan Oleh</th>
+                      <th className="py-3.5 px-4 sm:px-6 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/70 text-xs sm:text-sm">
+                    {licenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-slate-400">
+                          {loadingList
+                            ? 'Memuat daftar kode...'
+                            : 'Belum ada kode lisensi. Klik "Buat 10 Kode Lisensi Baru".'}
+                        </td>
+                      </tr>
+                    ) : (
+                      licenses.map((item) => (
+                        <tr key={item.code} className="hover:bg-slate-700/30 transition-colors">
+                          <td className="py-3.5 px-4 sm:px-6 font-mono font-extrabold text-white tracking-wider">
+                            {item.code}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {item.is_used ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                Sudah Dipakai
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                Tersedia
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-xs text-slate-300">
+                            {item.buyer_email ? (
+                              <div>
+                                <p className="font-semibold text-white">{item.buyer_email}</p>
+                                {item.used_at && (
+                                  <p className="text-[11px] text-slate-400">
+                                    {new Date(item.used_at).toLocaleDateString('id-ID')}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-500">-</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 sm:px-6 text-right">
+                            <button
+                              onClick={() => handleCopyCode(item.code)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-blue-600 text-white text-xs font-bold transition-colors"
+                            >
+                              {copiedCode === item.code ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-300" /> Tersalin
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" /> Salin Kode
+                                </>
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StreakDetailModal({
+  streakData,
+  streakStatus,
+  isRestoreAvailable,
+  restoringStreak,
+  onRestore,
+  onClose,
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl relative">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:bg-slate-100"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="flex flex-col items-center text-center">
+          <div
+            className={`w-16 h-16 rounded-3xl flex items-center justify-center mb-3 ${
+              streakStatus === 'active_today'
+                ? 'bg-orange-100 text-orange-500'
+                : streakStatus === 'warning_yesterday'
+                ? 'bg-amber-100 text-amber-500'
+                : 'bg-slate-100 text-slate-400'
+            }`}
+          >
+            <Flame
+              className={`w-9 h-9 ${
+                streakStatus === 'active_today'
+                  ? 'fill-orange-500'
+                  : streakStatus === 'warning_yesterday'
+                  ? 'fill-amber-400'
+                  : 'fill-slate-300'
+              }`}
+            />
+          </div>
+
+          <h3 className="text-xl font-extrabold text-slate-900">Daily Streak Keuangan</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Catat minimal 1 transaksi setiap hari (Zona Waktu WIB) agar apimu terus menyala!
+          </p>
+
+          <div className="grid grid-cols-2 gap-3 w-full my-5">
+            <div className="bg-orange-50/80 border border-orange-100 rounded-2xl p-3.5">
+              <span className="text-[11px] font-bold text-orange-700 uppercase">Streak Saat Ini</span>
+              <p className="text-2xl font-extrabold text-orange-600 mt-1">
+                {streakData.current_streak || 0} <span className="text-xs font-bold">Hari</span>
+              </p>
+            </div>
+            <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3.5">
+              <span className="text-[11px] font-bold text-blue-700 uppercase">Rekor Terbaik</span>
+              <p className="text-2xl font-extrabold text-blue-600 mt-1">
+                {streakData.longest_streak || 0} <span className="text-xs font-bold">Hari</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full bg-slate-50 rounded-2xl p-3.5 text-left border border-slate-100 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-medium">Terakhir Mencatat:</span>
+              <span className="font-bold text-slate-800">
+                {streakData.last_log_date || 'Belum pernah'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-medium">Jatah Pemulihan Bulan Ini:</span>
+              <span
+                className={`font-extrabold ${
+                  isRestoreAvailable ? 'text-emerald-600' : 'text-rose-600'
+                }`}
+              >
+                {isRestoreAvailable ? '1 / 1 Tersedia' : '0 / 1 Habis'}
+              </span>
+            </div>
+          </div>
+
+          {streakStatus === 'extinguished' && streakData.previous_streak > 0 && isRestoreAvailable && (
+            <button
+              onClick={onRestore}
+              disabled={restoringStreak}
+              className="w-full mt-4 py-3 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs shadow-md"
+            >
+              {restoringStreak
+                ? 'Memulihkan...'
+                : `Pulihkan ${streakData.previous_streak} Hari Streak (1/1)`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmModal({ dialog, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl">
+        <h3 className="text-lg font-extrabold text-slate-900">{dialog.title}</h3>
+        <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">{dialog.message}</p>
+        <div className="grid grid-cols-2 gap-2.5 mt-6">
+          <button
+            onClick={onCancel}
+            className="py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm"
+          >
+            Batal
+          </button>
+          <button
+            onClick={dialog.onConfirm}
+            className={`py-2.5 rounded-2xl text-white font-bold text-xs sm:text-sm ${
+              dialog.danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {dialog.confirmText || 'Konfirmasi'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SupabaseConfigModal({ sbConfig, onSave, onClose }) {
+  const [url, setUrl] = useState(sbConfig.url || '');
+  const [key, setKey] = useState(sbConfig.key || '');
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white text-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-extrabold text-slate-900">Pengaturan Koneksi Supabase</h3>
+          <button onClick={onClose} className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave({ url: url.trim(), key: key.trim() });
+          }}
+          className="space-y-4"
+        >
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Supabase Project URL
+            </label>
+            <input
+              type="url"
+              required
+              placeholder="https://xyzcompany.supabase.co"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Supabase Anon Public Key
+            </label>
+            <textarea
+              rows={3}
+              required
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-600"
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm"
+          >
+            Simpan & Hubungkan
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SqlSchemaModal({ onClose, showToast }) {
+  const handleCopySql = () => {
+    const el = document.createElement('textarea');
+    el.value = SUPABASE_SQL_SCHEMA;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast('Skema SQL Supabase berhasil disalin!', 'success');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white text-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-lg font-extrabold text-slate-900">Skema SQL & RLS Supabase</h3>
+            <p className="text-xs text-slate-500">
+              Salin dan jalankan di SQL Editor proyek Supabase Anda
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <pre className="flex-1 overflow-auto bg-slate-900 text-emerald-300 text-[11px] p-4 rounded-2xl font-mono leading-relaxed">
+          {SUPABASE_SQL_SCHEMA}
+        </pre>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={handleCopySql}
+            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5"
+          >
+            <Copy className="w-4 h-4" /> Salin Semua SQL
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToastNotification({ toast, onClose }) {
+  if (!toast) return null;
+
+  const styles = {
+    success: 'bg-emerald-600 text-white shadow-emerald-600/30',
+    error: 'bg-rose-600 text-white shadow-rose-600/30',
+    streak: 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-orange-500/30',
+    info: 'bg-slate-900 text-white shadow-slate-900/30',
+  };
+
+  return (
+    <div className="fixed top-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+      <div
+        className={`pointer-events-auto max-w-md w-full px-4 py-3 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-bold transition-all ${
+          styles[toast.type] || styles.info
+        }`}
+      >
+        <span>{toast.message}</span>
+        <button onClick={onClose} className="opacity-80 hover:opacity-100">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
